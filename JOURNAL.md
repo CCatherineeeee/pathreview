@@ -29,7 +29,34 @@ _Part 4 — Scope and time._ The issue has several other claims in the comments;
 
 ---
 
-## Week 8 — Reproducing issue #155
+## Week 8 — Reproduction & solution planning
+
+**Reproduction commit link:** https://github.com/CCatherineeeee/pathreview/commit/215fc5316e53f1da5371e03654d1e995b862272d
+
+**Reproduction summary:**
+I brought the stack up locally (`docker compose up -d`, migrations, uvicorn) and called
+`GET /health`, which returned 503 with `redis: "unhealthy"` on every request while
+`docker compose exec redis redis-cli ping` answered `PONG` — proving Redis was fine and
+the probe was lying. The uvicorn log gave the real cause:
+`'Settings' object has no attribute 'redis_host'`, an `AttributeError` swallowed by the
+handler's broad `except Exception` and misreported as a dependency outage.
+
+**PLAN.md link:** https://github.com/CCatherineeeee/pathreview/blob/fix/155-health-check-redis-url/PLAN.md
+
+**Walkthrough video (recommended):** _not recorded_
+
+**Blockers or open questions:**
+No blockers — the fix is validated and the path into Week 9 is clear. Two things I want a
+maintainer's read on, both pre-existing and both scoped out of this PR into their own
+issues: whether the Redis probe should carry a `socket_connect_timeout` (without one an
+unreachable host hangs the endpoint), and whether the per-request client should be pooled
+or closed. Separately, the Postgres probe in the same handler is broken independently of
+#155, so `/health` will keep returning 503 after my fix lands — I need to make sure
+reviewers read that as expected rather than as my change not working.
+
+---
+
+### Reproduction detail
 
 **Status:** Reproduced and confirmed. The bug triggers on every request, not intermittently.
 
