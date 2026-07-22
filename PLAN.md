@@ -91,8 +91,10 @@ Postgres or vector-DB branches of the handler.
    mypy; `types-redis` is already in dev dependencies, so `from_url` should type-check
    cleanly.
 
-5. **Open the PR.** Fill out `.github/PULL_REQUEST_TEMPLATE.md`, `Closes #155`, and flag
-   the out-of-scope Postgres finding for reviewers (see Risks below).
+5. **Open the PR, then file follow-ups.** Fill out `.github/PULL_REQUEST_TEMPLATE.md`,
+   `Closes #155`, and flag the out-of-scope findings for reviewers (see Risks below).
+   Open separate issues for the Postgres `text()` bug and the two pre-existing Redis
+   weaknesses rather than folding them into this change.
 
 ## Inputs & outputs
 
@@ -117,15 +119,17 @@ So `dependencies.redis` will correctly flip to `"healthy"`, but `status` stays
 biggest risk of the PR being misread as "not working." I will state it explicitly in the
 PR description and file a separate issue rather than expanding scope.
 
-**Unknown — should the probe have a connection timeout?** `from_url` with no
-`socket_connect_timeout` can hang for the OS default if `redis_url` points at an
-unreachable-but-routable host, which would make the health endpoint itself hang. Adding
-`socket_connect_timeout` would be more robust but goes beyond what the issue asks. I
-plan to raise this as a question in the PR rather than deciding unilaterally.
+**Two pre-existing weaknesses, noted but out of scope.** Neither is caused by this fix
+and neither will be changed here — both are worth their own issues:
 
-**Unknown — connection cleanup.** Each request creates a new client and never closes it.
-This is pre-existing behavior that I am not changing, but a reviewer may want
-`r.close()` or a module-level pooled client. Flagging rather than assuming.
+- *No connection timeout.* Without `socket_connect_timeout`, a `redis_url` pointing at an
+  unreachable-but-routable host makes the probe hang for the OS default, which would hang
+  the health endpoint itself.
+- *No connection cleanup.* Each request builds a new client and never closes it; a pooled
+  module-level client would be the sturdier pattern.
+
+I will mention both briefly in the PR and open follow-up issues rather than widening this
+change.
 
 **Test-pattern risk.** Being the first route test in the repo, my fixture approach has no
 precedent to copy and may not match what maintainers want. Mitigation: keep it minimal
