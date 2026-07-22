@@ -11,22 +11,23 @@ from core.config import settings
 from core.database import get_db
 
 
+@pytest.fixture
+def client():
+    """Create a TestClient with the database dependency stubbed out.
+
+    The stub keeps the Postgres probe healthy so that each assertion isolates
+    the behavior of the Redis probe.
+    """
+    mock_session = Mock()
+    mock_session.execute = AsyncMock(return_value=None)
+    app.dependency_overrides[get_db] = lambda: mock_session
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
 @pytest.mark.unit
 class TestHealthCheckRedis:
     """Test suite for the Redis probe in the /health endpoint."""
-
-    @pytest.fixture
-    def client(self):
-        """Create a TestClient with the database dependency stubbed out.
-
-        The stub keeps the Postgres probe healthy so that each assertion
-        isolates the behavior of the Redis probe.
-        """
-        mock_session = Mock()
-        mock_session.execute = AsyncMock(return_value=None)
-        app.dependency_overrides[get_db] = lambda: mock_session
-        yield TestClient(app)
-        app.dependency_overrides.clear()
 
     def test_reachable_redis_reports_healthy(self, client):
         """Test a responding Redis is reported as healthy."""
@@ -77,15 +78,6 @@ class TestHealthCheckRedisUrlHandling:
     These exercise the real redis.Redis.from_url parser rather than a mock,
     which is safe because it rejects an invalid URL before opening a socket.
     """
-
-    @pytest.fixture
-    def client(self):
-        """Create a TestClient with the database dependency stubbed out."""
-        mock_session = Mock()
-        mock_session.execute = AsyncMock(return_value=None)
-        app.dependency_overrides[get_db] = lambda: mock_session
-        yield TestClient(app)
-        app.dependency_overrides.clear()
 
     @pytest.mark.parametrize(
         "bad_url",
