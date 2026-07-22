@@ -26,3 +26,113 @@ _Part 4 — Scope and time._ The issue has several other claims in the comments;
 **Setup confirmation:** [x] App runs locally at localhost:5173
 
 **Cohort ledger:** [ ] Issue added to cohort ledger
+
+---
+
+## Week 8 — Reproducing issue #155
+
+**Status:** Reproduced and confirmed. The bug triggers on every request, not intermittently.
+
+### Environment setup
+
+Starting from a clean checkout (no `.env`, no `.venv`, Docker stopped):
+
+```bash
+cp .env.example .env
+python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
+docker compose up -d
+.venv/bin/alembic upgrade head        # applies migrations 001 and 002
+.venv/bin/uvicorn api.main:app --host 127.0.0.1 --port 8000
+```
+
+### Reproduction steps
+
+```bash
+curl -i http://127.0.0.1:8000/health
+```
+
+Observed — HTTP `503`, Redis reported as down:
+
+```json
+{"detail":{"status":"unhealthy",
+ "dependencies":{"postgres":"unhealthy","redis":"unhealthy","vector_db":"healthy"},
+ "safety_events_last_hour":0,
+ "timestamp":"2026-07-22T01:22:06.226408"}}
+```
+
+Repeated 3 times, identical response each time.
+
+### Proving it is a false alarm
+
+Redis itself is healthy the whole time:
+
+```bash
+docker compose exec redis redis-cli ping
+# PONG
+```
+
+So the endpoint claims Redis is down while Redis is answering. That contrast is the
+core of the reproduction.
+
+### Root cause confirmation
+
+The HTTP response body gives no useful detail — it only says `"unhealthy"`. The real
+cause appears only in the uvicorn server log:
+
+```
+redis_health_check_failed  error="'Settings' object has no attribute 'redis_host'"
+```
+
+Confirmed directly against the settings object:
+
+```bash
+.venv/bin/python -c "
+from core.config import settings
+print('has redis_host?', hasattr(settings, 'redis_host'))   # False
+print('redis_url =', settings.redis_url)                    # redis://localhost:6379/0
+"
+```
+
+`api/routes/health.py` (lines 44–49) builds its client from `settings.redis_host` and
+`settings.redis_port`. `core/config.py` defines neither — it exposes only `redis_url`
+(line 12). The attribute lookup raises `AttributeError` before any connection is
+attempted, and the surrounding `except Exception` catches it and labels the dependency
+"unhealthy".
+
+**Takeaway for the PR:** the broad `except Exception` makes a coding error
+indistinguishable from a real outage. A missing attribute and a dead Redis produce the
+exact same output.
+
+### Fix direction, validated
+
+```bash
+.venv/bin/python -c "
+import redis
+from core.config import settings
+r = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+print('ping ->', r.ping())   # True
+"
+```
+
+Confirms `redis.Redis.from_url(settings.redis_url, ...)` connects against the running
+container, so the planned one-line fix is sound.
+
+### Out of scope — found while reproducing
+
+Two other things surfaced. Neither is part of #155 and neither will be changed in this PR.
+
+1. **Postgres check is also broken.** `health.py` line 31 calls
+   `await db.execute("SELECT 1")` with a raw string, which SQLAlchemy 2.x rejects:
+   `Textual SQL expression 'SELECT 1' should be explicitly declared as text('SELECT 1')`.
+   This matters for acceptance criteria: after fixing Redis, the `redis` key flips to
+   `"healthy"`, but the endpoint still returns 503 because Postgres stays unhealthy.
+   Worth filing separately.
+
+2. **Vector DB check is vacuous.** It only tests whether the `vector_db_url` string is
+   non-empty, so it reports `"healthy"` even when the Chroma container is stopped —
+   which it was during part of this session.
+
+### Next step
+
+Add the first `/health` test file under `tests/unit/` (no test currently references the
+health route), then apply the `from_url` fix.
