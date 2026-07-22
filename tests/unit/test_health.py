@@ -61,9 +61,42 @@ class TestHealthCheckRedis:
 
         mock_from_url.assert_called_once()
         assert mock_from_url.call_args.args[0] == settings.redis_url
+        assert mock_from_url.call_args.kwargs["decode_responses"] is True
 
     def test_settings_exposes_redis_url_only(self):
         """Test Settings defines redis_url and not redis_host or redis_port."""
         assert settings.redis_url
         assert not hasattr(settings, "redis_host")
         assert not hasattr(settings, "redis_port")
+
+
+@pytest.mark.unit
+class TestHealthCheckRedisUrlHandling:
+    """Test suite for how the Redis probe handles bad redis_url values.
+
+    These exercise the real redis.Redis.from_url parser rather than a mock,
+    which is safe because it rejects an invalid URL before opening a socket.
+    """
+
+    @pytest.fixture
+    def client(self):
+        """Create a TestClient with the database dependency stubbed out."""
+        mock_session = Mock()
+        mock_session.execute = AsyncMock(return_value=None)
+        app.dependency_overrides[get_db] = lambda: mock_session
+        yield TestClient(app)
+        app.dependency_overrides.clear()
+
+    @pytest.mark.parametrize(
+        "bad_url",
+        ["", "not-a-url", "http://localhost:6379"],
+        ids=["empty", "no_scheme", "wrong_scheme"],
+    )
+    def test_invalid_redis_url_reports_unhealthy(self, client, monkeypatch, bad_url):
+        """Test an unparseable redis_url is reported without crashing the endpoint."""
+        monkeypatch.setattr(settings, "redis_url", bad_url)
+
+        response = client.get("/health")
+
+        assert response.status_code == 503
+        assert response.json()["detail"]["dependencies"]["redis"] == "unhealthy"
