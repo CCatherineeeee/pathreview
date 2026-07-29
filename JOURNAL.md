@@ -81,10 +81,18 @@ curl -i http://127.0.0.1:8000/health
 Observed — HTTP `503`, Redis reported as down:
 
 ```json
-{"detail":{"status":"unhealthy",
- "dependencies":{"postgres":"unhealthy","redis":"unhealthy","vector_db":"healthy"},
- "safety_events_last_hour":0,
- "timestamp":"2026-07-22T01:22:06.226408"}}
+{
+  "detail": {
+    "status": "unhealthy",
+    "dependencies": {
+      "postgres": "unhealthy",
+      "redis": "unhealthy",
+      "vector_db": "healthy"
+    },
+    "safety_events_last_hour": 0,
+    "timestamp": "2026-07-22T01:22:06.226408"
+  }
+}
 ```
 
 Repeated 3 times, identical response each time.
@@ -163,3 +171,84 @@ Two other things surfaced. Neither is part of #155 and neither will be changed i
 
 Add the first `/health` test file under `tests/unit/` (no test currently references the
 health route), then apply the `from_url` fix.
+
+---
+
+## Week 9 — Solution building & PR submission
+
+### Check-in 1 (mid-week)
+
+**Current progress:**
+Sub-tasks 1–4 of PLAN.md are complete.
+
+1. _Fix the client construction_ — done. `api/routes/health.py` now calls
+   `redis.Redis.from_url(settings.redis_url, decode_responses=True)` in place of the
+   six-line `redis.Redis(host=..., port=...)` block that referenced two fields Settings
+   never defines.
+2. _Add `tests/unit/test_health.py`_ — done. 7 tests, the repo's first route tests.
+3. _Verify end to end_ — done. Against live Docker the probe reports `healthy`, flips to
+   `unhealthy` when I run `docker compose stop redis`, and returns to `healthy` on
+   restart. Before the fix it reported `unhealthy` in all three states.
+4. _Run the full gate_ — done, with pre-existing failures measured against a clean
+   baseline (details below).
+
+I also confirmed the tests actually catch the bug: reverting `health.py` to the pre-fix
+version makes 2 of the 7 fail, so they are genuine regression guards rather than tests
+that pass against broken code.
+
+**Next steps:**
+Sub-task 5 — open a draft PR, request peer review in the Slack channel my instructor
+designates, address any feedback I agree with, then mark it ready for review. After that,
+file the three follow-up issues for the out-of-scope problems found while reproducing
+(the Postgres `text()` bug, no Redis connection timeout, no connection cleanup), and
+complete Check-in 2 with the PR link.
+
+**Blockers:**
+None blocking. Two environment findings worth recording:
+
+- `make` is not installed on my machine — running any target triggers an Xcode
+  command-line-tools install prompt. I ran the underlying commands directly
+  (`ruff check .`, `black --check .`, `mypy api/ core/ ...`, `pytest tests/unit -m unit`).
+- The repo has substantial pre-existing failures. I measured a baseline from a clean
+  worktree at the last commit before any of my code changes, then re-measured after:
+
+  | Check                       | Before                | After                 | New failures |
+  | --------------------------- | --------------------- | --------------------- | ------------ |
+  | `ruff check .`              | 182 errors            | 182 errors            | 0            |
+  | `black --check .`           | 52 to reformat        | 52 to reformat        | 0            |
+  | `mypy api/ core/ ...`       | 5 errors              | 5 errors (identical)  | 0            |
+  | `pytest tests/unit -m unit` | 53 failed, 375 passed | 53 failed, 382 passed | 0            |
+
+  My two files are individually clean under ruff and black; my change adds 7 passing
+  tests and introduces no new failures in any check.
+
+---
+
+### Check-in 2 (end of week)
+
+**PR link:** https://github.com/ascherj/pathreview/pull/375
+
+**Branch:** `fix/155-health-check-redis-url`
+
+**What you built:**
+The `/health` endpoint's Redis probe built its client from `settings.redis_host` and
+`settings.redis_port`, neither of which exists on `Settings`, so the lookup raised
+`AttributeError` before any connection was attempted and the handler's broad
+`except Exception` reported that coding error as a dependency outage — Redis showed
+unhealthy even while answering `PING`. The fix builds the client from
+`settings.redis_url` (the field `Settings` actually defines) via `redis.Redis.from_url`,
+so the probe connects and reports Redis's real status.
+
+**Tests added or updated:**
+`tests/unit/test_health.py` (new, 7 tests — the repo's first route tests). Covers the
+Redis probe reporting healthy when reachable and unhealthy when the connection is
+refused; a regression guard asserting the client is built from `settings.redis_url` and
+that `decode_responses` is forwarded; a guard that `Settings` exposes `redis_url` and
+neither `redis_host` nor `redis_port`; and three parametrized invalid-URL cases (empty,
+scheme-less, wrong-scheme) confirming bad configuration is reported rather than crashing
+the endpoint. The database dependency is stubbed so the Postgres probe stays healthy and
+the assertions isolate Redis, keeping the tests offline and Docker-free.
+
+**Self-review confirmation:** [x] make check passes [x] make test-unit passes
+
+**Draft PR feedback received from:** none
