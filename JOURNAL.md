@@ -259,19 +259,20 @@ the assertions isolate Redis, keeping the tests offline and Docker-free.
 
 ### Reviewer feedback
 
-**Feedback received:** [x] Yes  [ ] No — still awaiting review
+**Feedback received:** No feedback (Su26 note: formal reviewer feedback is not provided
+this term).
 
 **Summary of feedback:**
-One peer comment on PR #375: "LGTM" from AngelD2000, two days after I opened the PR. No
-formal GitHub review, no line comments, nothing on the two open questions I flagged in
-the PR description (the missing `socket_connect_timeout` and whether the client should
-be pooled or closed per request). The PR is still unmerged as of this entry.
+No formal review came in. PR #375 has one informal comment from a peer, AngelD2000
+("LGTM"), but no line comments and no engagement with the two open questions I flagged in
+the PR description (the missing `socket_connect_timeout` and whether the client should be
+pooled or closed per request). Per the course note, this doesn't count as reviewer
+feedback, so I'm treating the PR as unreviewed.
 
 **How you responded:**
-Nothing to respond to substantively — I thanked them in the thread. I didn't treat "LGTM"
-as confirmation the two open questions were fine to drop; they're still open, and I filed
-the Postgres `text()` bug I found during reproduction as its own issue rather than folding
-it into this PR, since the reviewer never weighed in either way.
+N/A — no feedback to respond to. The two open questions from the PR description remain
+open; I filed the Postgres `text()` bug found during reproduction as its own issue rather
+than folding it into this PR, since no reviewer weighed in either way.
 
 ---
 
@@ -303,19 +304,21 @@ every file that touched Redis, confirming the exact field mismatch between `heal
 `Settings`, writing the first draft of the test file and PR description, and working through
 the "Is this right for me?" checklist against the actual code instead of in the abstract. It
 fell short on judgment calls that needed my own decision: whether to fold the Postgres bug
-into this PR or file it separately, how much detail a reviewer actually needs in the PR
-description versus what's just noise, and — this week specifically — how to read a one-word
-"LGTM" review. That's not something a tool can assess; it required knowing what depth of
-feedback I'd actually asked for and noticing I didn't get it.
+into this PR or file it separately, and how much detail a reviewer actually needs in the PR
+description versus what's just noise. With no formal review process this term, I couldn't
+lean on a human reviewer to validate that judgment either — I had to be the one deciding
+whether the PR description's open questions were resolved enough to consider the work done.
 
 **What would you do differently if you started over?**
-I'd ask for review more specifically instead of posting the PR and waiting — something like
-tagging a question directly ("can someone confirm the connect-timeout question in Notes for
-Reviewers?") rather than leaving it in prose a reviewer can skim past. A generic "please
-review" got a generic "LGTM." I'd also record my local environment quirks (no `make`
-installed, had to run `ruff`/`black`/`mypy`/`pytest` directly) in Week 7 instead of
-discovering and writing about them mid-Week-9, so future-me isn't rediscovering the same
-setup friction under deadline pressure.
+I'd write the PR description assuming no one will read it closely, since without a review
+requirement this term there was no guarantee anyone would. I put two open questions (the
+connect-timeout and pooling/cleanup behavior) in prose inside "Notes for Reviewers," and
+in hindsight I should have filed those as their own follow-up issues immediately instead
+of leaving them as unresolved questions in a PR that may never get a substantive read. I'd
+also record my local environment quirks (no `make` installed, had to run
+`ruff`/`black`/`mypy`/`pytest` directly) in Week 7 instead of discovering and writing about
+them mid-Week-9, so future-me isn't rediscovering the same setup friction under deadline
+pressure.
 
 **What are you most proud of from this module?**
 The regression tests actually testing something. Before finishing, I reverted `health.py`
