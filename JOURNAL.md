@@ -252,3 +252,73 @@ the assertions isolate Redis, keeping the tests offline and Docker-free.
 **Self-review confirmation:** [x] make check passes [x] make test-unit passes
 
 **Draft PR feedback received from:** none
+
+---
+
+## Week 10 — Iteration & reflection
+
+### Reviewer feedback
+
+**Feedback received:** [x] Yes  [ ] No — still awaiting review
+
+**Summary of feedback:**
+One peer comment on PR #375: "LGTM" from AngelD2000, two days after I opened the PR. No
+formal GitHub review, no line comments, nothing on the two open questions I flagged in
+the PR description (the missing `socket_connect_timeout` and whether the client should
+be pooled or closed per request). The PR is still unmerged as of this entry.
+
+**How you responded:**
+Nothing to respond to substantively — I thanked them in the thread. I didn't treat "LGTM"
+as confirmation the two open questions were fine to drop; they're still open, and I filed
+the Postgres `text()` bug I found during reproduction as its own issue rather than folding
+it into this PR, since the reviewer never weighed in either way.
+
+---
+
+### Reflection
+
+**What was harder than you expected?**
+Reproducing the bug convincingly was harder than fixing it. The fix is a one-line change,
+but proving it was the *only* thing wrong took real work: I had to rule out that Redis
+itself was down (it wasn't — `redis-cli ping` answered `PONG` while the endpoint reported
+"unhealthy"), and then find that the real error was buried in the uvicorn log, not the
+HTTP response, because `health.py`'s broad `except Exception` swallowed the `AttributeError`
+and reported it identically to a real outage. Writing a reproduction that a reviewer could
+trust without re-running everything themselves took longer than the code change itself.
+
+**What did you learn about working in a large codebase?**
+The biggest adjustment was scope discipline. While reproducing #155 I found two more real
+bugs in the same function — the Postgres probe uses a raw SQL string that SQLAlchemy 2.x
+rejects, and the vector DB check only verifies a config string is non-empty, not that the
+service is reachable. In my own projects I'd have just fixed all three in one pass. Here I
+had to leave them alone, note them for reviewers, and file them separately, because a PR
+that touches three unrelated bugs is harder to review than three PRs that touch one each.
+I also learned to measure a baseline before touching anything — the repo already had 53
+failing unit tests and 182 ruff errors on `main`, and without recording that first I would
+have had no way to prove my change added zero new failures.
+
+**How did AI tools help — and where did they fall short?**
+AI assistance (Claude, via this tool) was most useful for exploration and drafting: finding
+every file that touched Redis, confirming the exact field mismatch between `health.py` and
+`Settings`, writing the first draft of the test file and PR description, and working through
+the "Is this right for me?" checklist against the actual code instead of in the abstract. It
+fell short on judgment calls that needed my own decision: whether to fold the Postgres bug
+into this PR or file it separately, how much detail a reviewer actually needs in the PR
+description versus what's just noise, and — this week specifically — how to read a one-word
+"LGTM" review. That's not something a tool can assess; it required knowing what depth of
+feedback I'd actually asked for and noticing I didn't get it.
+
+**What would you do differently if you started over?**
+I'd ask for review more specifically instead of posting the PR and waiting — something like
+tagging a question directly ("can someone confirm the connect-timeout question in Notes for
+Reviewers?") rather than leaving it in prose a reviewer can skim past. A generic "please
+review" got a generic "LGTM." I'd also record my local environment quirks (no `make`
+installed, had to run `ruff`/`black`/`mypy`/`pytest` directly) in Week 7 instead of
+discovering and writing about them mid-Week-9, so future-me isn't rediscovering the same
+setup friction under deadline pressure.
+
+**What are you most proud of from this module?**
+The regression tests actually testing something. Before finishing, I reverted `health.py`
+to the pre-fix version and reran `tests/unit/test_health.py` — 2 of 7 tests failed against
+the broken code. That's a small thing, but it's the difference between a test suite that
+looks like coverage and one that would actually catch someone reintroducing this bug later.
