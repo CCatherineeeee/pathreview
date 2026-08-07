@@ -259,8 +259,8 @@ the assertions isolate Redis, keeping the tests offline and Docker-free.
 
 ### Reviewer feedback
 
-**Feedback received:** No feedback (Su26 note: formal reviewer feedback is not provided
-this term).
+**Feedback received:** [ ] Yes  [x] No — still awaiting review (Su26 note: formal
+reviewer feedback is not provided this term)
 
 **Summary of feedback:**
 No formal review came in. PR #375 has one informal comment from a peer, AngelD2000
